@@ -162,6 +162,9 @@ function processObject(obj) {
     
     // Add to batch
     if (schema) {
+        // Check for new columns and add them dynamically
+        checkAndAddNewColumns(flatObj);
+        
         currentBatch.push(flatObj);
         
         // Insert batch when full
@@ -304,6 +307,50 @@ function createTable() {
  */
 function sanitizeColumnName(name) {
     return name.replace(/[^a-zA-Z0-9_]/g, '_');
+}
+
+/**
+ * Check if object has new columns not in schema, and add them
+ */
+function checkAndAddNewColumns(obj) {
+    if (!schema || !db) return;
+    
+    const existingColumns = new Set(schema.map(col => col.name));
+    const newColumns = [];
+    
+    for (const key in obj) {
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+        
+        if (!existingColumns.has(key)) {
+            const value = obj[key];
+            const type = detectType(value);
+            newColumns.push({ name: key, type: type, nullable: true });
+        }
+    }
+    
+    // Add new columns to the database and schema
+    if (newColumns.length > 0) {
+        try {
+            for (const col of newColumns) {
+                const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${col.type}`;
+                db.run(alterSQL);
+                schema.push(col);
+                
+                postMessage({ 
+                    type: 'log', 
+                    data: { 
+                        message: `Added new column: ${col.name} (${col.type})`,
+                        level: 'info'
+                    }
+                });
+            }
+        } catch (error) {
+            postMessage({ 
+                type: 'error', 
+                data: { message: `Failed to add new columns: ${error.message}` }
+            });
+        }
+    }
 }
 
 /**

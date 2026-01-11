@@ -303,7 +303,7 @@ export default function Home() {
                 onDrop={handleDrop}
                 className={`border-2 border-dashed rounded-xl p-8 transition-all ${
                   isDragging
-                    ? 'border-blue-500 bg-blue-50 scale-105'
+                    ? 'border-green-500 bg-green-50 scale-105'
                     : 'border-gray-300 bg-gray-50'
                 }`}
               >
