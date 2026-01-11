@@ -116,4 +116,8 @@ If you see column names but empty data:
 - The first 5 objects are logged in detail, so you can see exactly how your data is being processed
 - Batch insertion logs appear every time a batch is inserted (default: every 1000 rows)
 - Use the browser's console filter to search for specific terms like "Flattened" or "error"
-- Save console output (right-click → Save as) if you need to share debugging information
+- You can export console logs for sharing:
+  - **Chrome/Edge**: Right-click in console → "Save as..." 
+  - **Firefox**: Use the browser's screenshot tool or copy-paste logs
+  - **Safari**: Select and copy logs manually
+  - Note: Methods vary by browser version and OS

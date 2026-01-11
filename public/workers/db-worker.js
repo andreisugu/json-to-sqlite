@@ -213,8 +213,7 @@ function flattenObject(obj, prefix = '') {
             flattened[newKey] = null;
         } else if (typeof value === 'object' && !Array.isArray(value)) {
             // Recursively flatten nested objects
-            const nestedFlat = flattenObject(value, newKey);
-            Object.assign(flattened, nestedFlat);
+            Object.assign(flattened, flattenObject(value, newKey));
         } else if (Array.isArray(value)) {
             // Store arrays as JSON strings
             flattened[newKey] = JSON.stringify(value);
@@ -420,7 +419,7 @@ function insertBatch() {
     console.log(`[DB Worker] Inserting batch of ${currentBatch.length} rows`);
     
     // Log first row of each batch for debugging
-    if (rowsProcessed === 0 || rowsProcessed % (batchSize * 10) === 0) {
+    if (currentBatch.length > 0 && (rowsProcessed === 0 || rowsProcessed % (batchSize * 10) === 0)) {
         console.log('[DB Worker] Sample row from batch:', currentBatch[0]);
         console.log('[DB Worker] Sample row keys:', Object.keys(currentBatch[0]));
     }
