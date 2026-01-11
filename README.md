@@ -296,8 +296,8 @@ The tool uses multiple strategies to handle files larger than available RAM:
 **Memory Footprint**:
 - Streaming parser overhead: ~10-20MB
 - Batch buffer: ~5-10MB (1000 objects)
-- SQLite in-memory database: Actual data size + indexes
-- Total overhead: ~30-50MB regardless of input file size
+- SQLite in-memory database: Size of actual data + indexes
+- **Total overhead**: ~15-30MB (parser + buffer), plus the resulting database size
 
 ### Schema Detection & Evolution
 
@@ -319,10 +319,10 @@ When a new field appears in row 5,000:
 ```
 
 **Type Detection Rules**:
-- `typeof === 'number'` && `Number.isInteger()` → INTEGER
-- `typeof === 'number'` && not integer → REAL  
-- `typeof === 'boolean'` → INTEGER (stored as 0/1)
-- Everything else → TEXT (including objects, arrays as JSON strings)
+- Numbers that are integers → INTEGER type
+- Numbers with decimal points → REAL type
+- Boolean values → INTEGER type (stored as 0 for false, 1 for true)
+- Everything else → TEXT type (including objects stored as JSON strings, arrays, null)
 - Type conflicts resolve to TEXT
 
 ### Performance
@@ -387,7 +387,15 @@ import initSqlJs from 'https://esm.sh/sql.js@1.10.3';
 import { JSONParser } from 'https://esm.sh/@streamparser/json@0.0.22';
 ```
 
-> **Note**: The CDN imports shown are the actual implementation used in production. The esm.sh CDN provides ES module compatibility for packages. For stricter security requirements, these libraries can be hosted locally with SRI hashes.
+> **Security Note**: The CDN imports shown are the actual implementation used in production. While convenient for quick deployment, using CDN dependencies has security implications:
+> - ✅ **Pros**: Easy setup, no bundling needed, automatic caching
+> - ⚠️ **Cons**: Dependency on third-party CDN uptime, potential supply chain risk
+> 
+> For production deployments with sensitive data or stricter security requirements, consider:
+> - Hosting libraries locally within your repository
+> - Using Subresource Integrity (SRI) hashes to verify CDN resources
+> - Implementing Content Security Policy (CSP) headers
+> - Reviewing and auditing the library source code
 
 **Benefits**:
 - ✅ Modern import syntax instead of `importScripts()`
