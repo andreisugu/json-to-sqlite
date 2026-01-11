@@ -23,7 +23,7 @@ let JSONParser = null;
  * Note: This uses dynamic ES module loading because:
  * 1. The @streamparser/json-whatwg library is ESM-only
  * 2. Classic workers (needed for importScripts) don't support ES modules natively
- * 3. The library is loaded from a well-known CDN (jsDelivr)
+ * 3. The library is loaded from esm.sh CDN which properly handles ESM module resolution
  * 
  * For production deployments with strict security requirements, consider:
  * - Hosting the library locally
@@ -32,16 +32,9 @@ let JSONParser = null;
  */
 async function initParser() {
     try {
-        // Dynamically load the JSON parser library
-        const response = await fetch('https://cdn.jsdelivr.net/npm/@streamparser/json-whatwg@0.0.21/+esm');
-        const moduleText = await response.text();
-        
-        // Create a blob URL for the module
-        const blob = new Blob([moduleText], { type: 'application/javascript' });
-        const moduleUrl = URL.createObjectURL(blob);
-        
-        // Import the module
-        const module = await import(moduleUrl);
+        // Dynamically load the JSON parser library using esm.sh CDN
+        // esm.sh properly handles ESM module resolution unlike blob URLs
+        const module = await import('https://esm.sh/@streamparser/json-whatwg@0.0.22');
         JSONParser = module.JSONParser;
         
         // paths: ['$[*]'] means "Give me every item inside the root array"
