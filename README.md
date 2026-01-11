@@ -293,7 +293,7 @@ The tool uses multiple strategies to handle files larger than available RAM:
 5. **Buffer Management**: Efficient string buffer handles incomplete objects across chunk boundaries
 6. **Transaction Batching**: SQLite transactions group inserts for 50-100x performance improvement
 
-**Memory Footprint**:
+**Memory Footprint** (approximate, measured with Chrome DevTools):
 - Streaming parser overhead: ~10-20MB
 - Batch buffer: ~5-10MB (1000 objects)
 - SQLite in-memory database: Size of actual data + indexes
@@ -337,11 +337,17 @@ Typical performance on modern hardware (M1/M2 Mac, Ryzen 5000+, i7-11th gen+):
 | 1GB       | ~1M         | 5-10min    | ~1.7-3MB/s |
 
 **Performance Factors**:
-- ✅ **Batch size**: Larger batches = faster (but more memory)
-- ✅ **Object complexity**: Flat objects process faster than deeply nested
-- ✅ **Column count**: Fewer columns = faster inserts
-- ✅ **Hardware**: Better CPU = faster parsing and SQLite operations
-- ❌ **Schema changes**: Frequent ALTER TABLEs slow processing
+
+Positive factors (increase speed):
+- ✅ Larger batch sizes (but use more memory)
+- ✅ Flat object structures (vs deeply nested)
+- ✅ Fewer columns in schema
+- ✅ Modern hardware (faster CPU/better browser engine)
+
+Limiting factors (decrease speed):
+- ❌ Frequent schema changes (ALTER TABLE operations)
+- ❌ Very complex nested objects
+- ❌ Low memory conditions
 
 **Optimization Tips**:
 - Use 2000-5000 batch size for files > 100MB
