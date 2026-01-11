@@ -42,7 +42,6 @@ async function initParser() {
         parser.onValue = (event) => {
             const realData = event.value;
 
-            // --- THIS IS THE MISSING LOGIC ---
             if (Array.isArray(realData)) {
                 // If the parser gave us the whole list at once (common for small files),
                 // we MUST loop through it to create individual rows.
@@ -54,11 +53,14 @@ async function initParser() {
                 // It's a single object (streaming mode)
                 processObject(realData);
             }
-            // ---------------------------------
         };
         
         parser.onError = (err) => {
             console.error('[DB Worker] JSON Parse Error:', err);
+            postMessage({ 
+                type: 'error', 
+                data: { message: `JSON Parse Error: ${err.message}` }
+            });
         };
         
     } catch (error) {
@@ -140,7 +142,9 @@ self.onmessage = async function(event) {
                 try {
                     // Try to close cleanly, but ignore if already closed
                     if (parser.close) parser.close(); 
-                } catch(e) { /* ignore */ }
+                } catch(e) { 
+                    console.debug('[DB Worker] Parser already closed:', e);
+                }
                 
                 await finalizeProcessing();
             }
@@ -178,24 +182,20 @@ function processObject(obj) {
         createTable();
     }
     
-    // --- FIX STARTS HERE ---
-    
-    // 1. Always add to batch, even if schema is still being built
+    // Always add to batch, even if schema is still being built
     currentBatch.push(flatObj);
 
-    // 2. If schema exists, check for new columns on this specific object
+    // If schema exists, check for new columns on this specific object
     if (schema) {
         checkAndAddNewColumns(flatObj);
     }
     
-    // 3. Insert batch only if we have a schema AND the batch is full
+    // Insert batch only if we have a schema AND the batch is full
     if (schema && currentBatch.length >= batchSize) {
         // Apply any pending column additions before inserting
         applyPendingColumns();
         insertBatch();
     }
-
-    // --- FIX ENDS HERE ---
 }
 
 /**
