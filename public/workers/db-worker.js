@@ -25,7 +25,7 @@ let parser = null;
  * Note: This uses ES module imports from esm.sh CDN because:
  * 1. Module workers support native ES module imports
  * 2. esm.sh automatically handles module conversion and compatibility
- * 3. This is the modern, recommended approach for web workers in 2025
+ * 3. This is the modern, recommended approach for web workers
  * 
  * For production deployments with strict security requirements, consider:
  * - Hosting the library locally
@@ -65,7 +65,7 @@ async function initDatabase() {
         console.log('[DB Worker] Initializing SQL.js database...');
         postMessage({ type: 'log', data: { message: 'Loading SQL.js WASM...' } });
         
-        // Note: esm.sh is used for the ES module import (line 5), but cdnjs is used
+        // Note: esm.sh is used for the ES module imports (above), but cdnjs is used
         // for the WASM file location. This is intentional - esm.sh handles the JS
         // module conversion, while cdnjs provides reliable WASM file hosting.
         const SQL = await initSqlJs({
