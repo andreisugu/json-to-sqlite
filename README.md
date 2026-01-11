@@ -309,13 +309,13 @@ The schema system adapts dynamically as data is processed:
 - Detects types based on JavaScript typeof and value patterns
 - Creates initial SQLite table with discovered columns
 
-**Dynamic Column Addition**:
-```javascript
-// When a new field appears in row 5,000:
-1. Detect new field (e.g., configs_extraData_sharpnessDenoise)
-2. Infer type from value
-3. Execute: ALTER TABLE data ADD COLUMN configs_extraData_sharpnessDenoise TEXT
-4. Continue processing (existing rows automatically have NULL)
+**Dynamic Column Addition Process**:
+```
+When a new field appears in row 5,000:
+  1. Detect new field (e.g., configs_extraData_sharpnessDenoise)
+  2. Infer type from value
+  3. Execute: ALTER TABLE data ADD COLUMN configs_extraData_sharpnessDenoise TEXT
+  4. Continue processing (existing rows automatically have NULL)
 ```
 
 **Type Detection Rules**:
@@ -382,10 +382,12 @@ This project uses **ES6 Module Workers**, which was non-trivial to implement:
 // Main thread creates module worker
 const worker = new Worker('/workers/db-worker.js', { type: 'module' });
 
-// Worker uses native ES6 imports
+// Worker can use native ES6 imports (actual code from db-worker.js)
 import initSqlJs from 'https://esm.sh/sql.js@1.10.3';
 import { JSONParser } from 'https://esm.sh/@streamparser/json@0.0.22';
 ```
+
+> **Note**: The CDN imports shown are the actual implementation used in production. The esm.sh CDN provides ES module compatibility for packages. For stricter security requirements, these libraries can be hosted locally with SRI hashes.
 
 **Benefits**:
 - ✅ Modern import syntax instead of `importScripts()`
