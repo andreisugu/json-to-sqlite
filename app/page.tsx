@@ -118,26 +118,33 @@ export default function Home() {
   const handleWorkerMessage = (event: MessageEvent<WorkerMessage>) => {
     const { type, data } = event.data;
 
+    console.log('[Main] Worker message received:', type, data);
+
     switch (type) {
       case 'log':
         addLog(data.message, data.level);
         break;
       case 'status':
+        console.log('[Main] Status update:', data.message);
         setStatus(data.message);
         break;
       case 'progress':
+        console.log('[Main] Progress update:', data);
         setRowsProcessed(data.rowsProcessed);
         const processingProgress = 50 + (data.progress * 50);
         setProgress(processingProgress);
         break;
       case 'schema':
+        console.log('[Main] Schema detected:', data);
         addLog(`Schema detected: ${data.columns.length} columns`);
         addLog(`Columns: ${data.columns.join(', ')}`);
         break;
       case 'complete':
+        console.log('[Main] Conversion complete:', data);
         handleComplete(data);
         break;
       case 'error':
+        console.error('[Main] Worker error:', data.message);
         addLog(`Error: ${data.message}`, 'error');
         setStatus('Error occurred');
         if (timerRef.current) clearInterval(timerRef.current);
@@ -159,6 +166,10 @@ export default function Home() {
   const startConversion = async () => {
     if (!selectedFile) return;
 
+    console.log('[Main] Starting conversion...');
+    console.log('[Main] File:', selectedFile.name, selectedFile.size, 'bytes');
+    console.log('[Main] Configuration:', { tableName, sampleSize, batchSize });
+
     setShowOptions(false);
     setShowProgress(true);
     setProgress(0);
@@ -174,11 +185,13 @@ export default function Home() {
       workerRef.current = new Worker(`${basePath}/workers/db-worker.js`);
       workerRef.current.onmessage = handleWorkerMessage;
       workerRef.current.onerror = (error) => {
+        console.error('[Main] Worker error:', error);
         addLog(`Worker error: ${error.message}`, 'error');
         setStatus('Worker error occurred');
         if (timerRef.current) clearInterval(timerRef.current);
       };
 
+      console.log('[Main] Sending init message to worker');
       workerRef.current.postMessage({
         type: 'init',
         data: {
@@ -192,6 +205,7 @@ export default function Home() {
       await streamFile(selectedFile);
 
     } catch (error) {
+      console.error('[Main] Conversion error:', error);
       addLog(`Error: ${(error as Error).message}`, 'error');
       setStatus('Error occurred');
       if (timerRef.current) clearInterval(timerRef.current);
@@ -199,10 +213,12 @@ export default function Home() {
   };
 
   const streamFile = async (file: File) => {
+    console.log('[Main] Starting file streaming...');
     setStatus('Streaming file...');
     const chunkSize = 64 * 1024;
     let offset = 0;
     const fileSize = file.size;
+    let chunkCount = 0;
 
     while (offset < fileSize) {
       const chunk = file.slice(offset, offset + chunkSize);
@@ -215,12 +231,18 @@ export default function Home() {
       });
 
       offset += chunkSize;
+      chunkCount++;
       const readProgress = Math.min((offset / fileSize) * 50, 50);
       setProgress(readProgress);
+      
+      if (chunkCount % 100 === 0) {
+        console.log(`[Main] Streamed ${chunkCount} chunks (${offset} / ${fileSize} bytes)`);
+      }
       
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
+    console.log(`[Main] File streaming complete. Total chunks: ${chunkCount}`);
     workerRef.current?.postMessage({ type: 'end' });
     addLog('File streaming complete, processing data...');
     setStatus('Processing data...');
@@ -229,10 +251,12 @@ export default function Home() {
   const downloadDatabase = () => {
     if (!workerRef.current || !selectedFile) return;
     
+    console.log('[Main] Requesting database export...');
     addLog('Requesting database export...');
     
     const exportHandler = (event: MessageEvent<WorkerMessage>) => {
       if (event.data.type === 'exported') {
+        console.log('[Main] Database received, creating download link...');
         const blob = new Blob([event.data.data], { type: 'application/x-sqlite3' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -243,6 +267,7 @@ export default function Home() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
+        console.log('[Main] Database download initiated');
         addLog('Database downloaded successfully!');
         workerRef.current?.removeEventListener('message', exportHandler);
       }
