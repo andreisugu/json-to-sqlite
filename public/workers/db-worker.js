@@ -65,6 +65,9 @@ async function initDatabase() {
         console.log('[DB Worker] Initializing SQL.js database...');
         postMessage({ type: 'log', data: { message: 'Loading SQL.js WASM...' } });
         
+        // Note: esm.sh is used for the ES module import (line 5), but cdnjs is used
+        // for the WASM file location. This is intentional - esm.sh handles the JS
+        // module conversion, while cdnjs provides reliable WASM file hosting.
         const SQL = await initSqlJs({
             locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
         });
