@@ -84,6 +84,9 @@ async function initDatabase() {
         console.log('[DB Worker] Database and parser created successfully');
         postMessage({ type: 'log', data: { message: 'Database & Parser initialized' } });
         
+        // Send READY signal to main thread
+        postMessage({ type: 'READY' });
+        
     } catch (error) {
         console.error('[DB Worker] Failed to initialize database:', error);
         postMessage({ 
