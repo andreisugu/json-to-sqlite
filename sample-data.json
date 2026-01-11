@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "age": 30,
+    "active": true,
+    "score": 95.5,
+    "address": {
+      "street": "123 Main St",
+      "city": "New York",
+      "zip": "10001"
+    },
+    "tags": ["developer", "javascript", "python"]
+  },
+  {
+    "id": 2,
+    "name": "Jane Smith",
+    "email": "jane.smith@example.com",
+    "age": 25,
+    "active": true,
+    "score": 88.3,
+    "address": {
+      "street": "456 Oak Ave",
+      "city": "San Francisco",
+      "zip": "94102"
+    },
+    "tags": ["designer", "ui/ux"]
+  },
+  {
+    "id": 3,
+    "name": "Bob Johnson",
+    "email": "bob.johnson@example.com",
+    "age": 35,
+    "active": false,
+    "score": 92.7,
+    "address": {
+      "street": "789 Pine Rd",
+      "city": "Seattle",
+      "zip": "98101"
+    },
+    "tags": ["manager", "agile"]
+  },
+  {
+    "id": 4,
+    "name": "Alice Williams",
+    "email": "alice.williams@example.com",
+    "age": 28,
+    "active": true,
+    "score": 97.2,
+    "address": {
+      "street": "321 Elm St",
+      "city": "Boston",
+      "zip": "02101"
+    },
+    "tags": ["data-scientist", "machine-learning", "python"]
+  },
+  {
+    "id": 5,
+    "name": "Charlie Brown",
+    "email": "charlie.brown@example.com",
+    "age": 42,
+    "active": true,
+    "score": 85.9,
+    "address": {
+      "street": "654 Maple Dr",
+      "city": "Austin",
+      "zip": "78701"
+    },
+    "tags": ["devops", "kubernetes", "docker"]
+  }
+]

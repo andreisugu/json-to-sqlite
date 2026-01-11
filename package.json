@@ -1,0 +1,26 @@
+{
+  "name": "json-to-sqlite",
+  "version": "1.0.0",
+  "description": "A browser-based tool to convert large JSON files to SQLite databases",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx http-server -p 8000",
+    "build": "echo 'No build step required - static site'"
+  },
+  "keywords": [
+    "json",
+    "sqlite",
+    "browser",
+    "converter",
+    "streaming"
+  ],
+  "author": "Andrei Șugubete",
+  "license": "MIT",
+  "dependencies": {
+    "@streamparser/json": "^0.0.21",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
