@@ -231,7 +231,7 @@ export default function Home() {
       
       let chunkCount = 0;
       const fileSize = file.size;
-      let bytesRead = 0;
+      let charsRead = 0;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -244,12 +244,13 @@ export default function Home() {
         });
         
         chunkCount++;
-        bytesRead += value.length;
-        const readProgress = Math.min((bytesRead / fileSize) * 50, 50);
+        charsRead += value.length;
+        // Use chunk count for progress since char count != byte count for UTF-8
+        const readProgress = Math.min((chunkCount / (fileSize / 65536 + 1)) * 50, 50);
         setProgress(readProgress);
         
         if (chunkCount % 100 === 0) {
-          console.log(`[Main] Streamed ${chunkCount} chunks (approx ${bytesRead} chars)`);
+          console.log(`[Main] Streamed ${chunkCount} chunks (${charsRead} chars)`);
         }
         
         await new Promise(resolve => setTimeout(resolve, 0));
