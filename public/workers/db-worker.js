@@ -19,6 +19,16 @@ let JSONParser = null;
 
 /**
  * Initialize the Stream Parser
+ * 
+ * Note: This uses dynamic ES module loading because:
+ * 1. The @streamparser/json-whatwg library is ESM-only
+ * 2. Classic workers (needed for importScripts) don't support ES modules natively
+ * 3. The library is loaded from a well-known CDN (jsDelivr)
+ * 
+ * For production deployments with strict security requirements, consider:
+ * - Hosting the library locally
+ * - Using Subresource Integrity (SRI) hashes
+ * - Implementing Content Security Policy (CSP) headers
  */
 async function initParser() {
     try {
@@ -400,8 +410,9 @@ function insertBatch() {
     try {
         db.run('BEGIN');
         
+        const columnNames = schema.map(col => `"${sanitize(col.name)}"`).join(', ');
         const placeholders = schema.map(() => '?').join(', ');
-        const insertSQL = `INSERT INTO "${tableName}" VALUES (${placeholders})`;
+        const insertSQL = `INSERT INTO "${tableName}" (${columnNames}) VALUES (${placeholders})`;
         
         const stmt = db.prepare(insertSQL);
         
