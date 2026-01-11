@@ -6,7 +6,7 @@ importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
 
 // Import streaming JSON parser using UMD build
 // This avoids CORS/Dynamic Import issues with ESM modules in classic workers
-importScripts('https://cdn.jsdelivr.net/npm/@streamparser/json@0.0.23/dist/json.min.js');
+importScripts('https://cdn.jsdelivr.net/npm/@streamparser/json@0.0.22/dist/json.min.js');
 
 let db = null;
 let tableName = 'data';
