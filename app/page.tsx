@@ -135,7 +135,8 @@ export default function Home() {
 
     try {
       addLog('Initializing database worker...');
-      workerRef.current = new Worker('/json-to-sqlite/workers/db-worker.js');
+      const basePath = process.env.NODE_ENV === 'production' ? '/json-to-sqlite' : '';
+      workerRef.current = new Worker(`${basePath}/workers/db-worker.js`);
       workerRef.current.onmessage = handleWorkerMessage;
       workerRef.current.onerror = (error) => {
         addLog(`Worker error: ${error.message}`, 'error');
@@ -145,9 +146,11 @@ export default function Home() {
 
       workerRef.current.postMessage({
         type: 'init',
-        tableName,
-        sampleSize,
-        batchSize
+        data: {
+          tableName,
+          sampleSize,
+          batchSize
+        }
       });
 
       addLog('Starting to stream JSON file...');

@@ -1,6 +1,11 @@
 // Database worker for handling SQL.js operations and JSON parsing
 // This runs in a separate thread to prevent UI blocking
 
+// Note: SQL.js is loaded from CDN for convenience and to reduce bundle size.
+// For production use with strict security requirements, consider:
+// 1. Hosting SQL.js locally in the public directory
+// 2. Using Subresource Integrity (SRI) hashes for CDN resources
+// 3. Implementing Content Security Policy (CSP) headers
 importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
 
 let db = null;
@@ -173,7 +178,7 @@ function flattenObject(obj, prefix = '') {
     const flattened = {};
     
     for (const key in obj) {
-        if (!obj.hasOwnProperty(key)) continue;
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
         
         const value = obj[key];
         const newKey = prefix ? `${prefix}_${key}` : key;
@@ -202,7 +207,7 @@ const schemaBuilder = {
     
     add(obj) {
         for (const key in obj) {
-            if (!obj.hasOwnProperty(key)) continue;
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
             
             const value = obj[key];
             const type = detectType(value);

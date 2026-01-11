@@ -67,18 +67,6 @@ npm run build
 # Open browser to http://localhost:3000
 ```
 
-# Install dependencies (optional, for development server)
-npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Open browser to http://localhost:3000
-```
-
 ## 📖 Usage
 
 1. **Select JSON File**: Click "Choose JSON File" and select your JSON file
