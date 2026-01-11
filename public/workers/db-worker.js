@@ -63,8 +63,10 @@ async function initParser() {
                     if (done) break;
                     
                     // Process each parsed object
-                    if (value) {
-                        processObject(value);
+                    // The parser emits objects with { value, key, parent, stack, partial }
+                    // We need to extract the actual value from this metadata
+                    if (value && value.value !== undefined) {
+                        processObject(value.value);
                     }
                 }
             } catch (err) {
