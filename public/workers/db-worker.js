@@ -1,11 +1,7 @@
-// Database worker for handling SQL.js operations and JSON parsing
+// Database worker: Uses streaming JSON parser for robust parsing
 // This runs in a separate thread to prevent UI blocking
 
-// Note: SQL.js is loaded from CDN for convenience and to reduce bundle size.
-// For production use with strict security requirements, consider:
-// 1. Hosting SQL.js locally in the public directory
-// 2. Using Subresource Integrity (SRI) hashes for CDN resources
-// 3. Implementing Content Security Policy (CSP) headers
+// Import SQL.js from CDN using classic worker syntax
 importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
 
 let db = null;
@@ -13,17 +9,65 @@ let tableName = 'data';
 let sampleSize = 100;
 let batchSize = 1000;
 let schema = null;
-let buffer = '';
 let objectCount = 0;
 let rowsProcessed = 0;
 let currentBatch = [];
-let isInitialized = false;
-let bracketDepth = 0;
-let inString = false;
-let escapeNext = false;
-let currentObject = '';
 let existingColumnsSet = new Set();
 let pendingColumns = [];
+let parser = null;
+let JSONParser = null;
+
+/**
+ * Initialize the Stream Parser
+ * 
+ * Note: This uses dynamic ES module loading because:
+ * 1. The @streamparser/json-whatwg library is ESM-only
+ * 2. Classic workers (needed for importScripts) don't support ES modules natively
+ * 3. The library is loaded from a well-known CDN (jsDelivr)
+ * 
+ * For production deployments with strict security requirements, consider:
+ * - Hosting the library locally
+ * - Using Subresource Integrity (SRI) hashes
+ * - Implementing Content Security Policy (CSP) headers
+ */
+async function initParser() {
+    try {
+        // Dynamically load the JSON parser library
+        const response = await fetch('https://cdn.jsdelivr.net/npm/@streamparser/json-whatwg@0.0.21/+esm');
+        const moduleText = await response.text();
+        
+        // Create a blob URL for the module
+        const blob = new Blob([moduleText], { type: 'application/javascript' });
+        const moduleUrl = URL.createObjectURL(blob);
+        
+        // Import the module
+        const module = await import(moduleUrl);
+        JSONParser = module.JSONParser;
+        
+        // paths: ['$[*]'] means "Give me every item inside the root array"
+        // keepStack: false keeps memory usage low
+        parser = new JSONParser({ paths: ['$[*]'], keepStack: false });
+        
+        parser.onValue = ({ value }) => {
+            // This fires exactly once per complete object in your array
+            processObject(value);
+        };
+        
+        parser.onError = (err) => {
+            console.error('[DB Worker] JSON Parse Error:', err);
+            postMessage({ 
+                type: 'error', 
+                data: { message: `JSON Parse Error: ${err.message}` }
+            });
+        };
+    } catch (error) {
+        console.error('[DB Worker] Failed to initialize parser:', error);
+        postMessage({ 
+            type: 'error', 
+            data: { message: `Failed to initialize parser: ${error.message}` }
+        });
+    }
+}
 
 /**
  * Initialize SQL.js and database
@@ -41,9 +85,11 @@ async function initDatabase() {
         
         db = new SQL.Database();
         
-        console.log('[DB Worker] Database created successfully');
-        postMessage({ type: 'log', data: { message: 'Database initialized successfully' } });
-        isInitialized = true;
+        console.log('[DB Worker] Initializing JSON parser...');
+        await initParser();
+        
+        console.log('[DB Worker] Database and parser created successfully');
+        postMessage({ type: 'log', data: { message: 'Database & Parser initialized' } });
         
     } catch (error) {
         console.error('[DB Worker] Failed to initialize database:', error);
@@ -72,15 +118,25 @@ self.onmessage = async function(event) {
             break;
 
         case 'chunk':
-            if (isInitialized) {
-                processChunk(data);
+            // THIS IS THE FIX: We just feed the raw string to the library.
+            // It handles the partial brackets, nested objects, and arrays automatically.
+            if (parser) {
+                try {
+                    parser.write(data);
+                } catch (e) {
+                    console.error('[DB Worker] Parser Write Error:', e);
+                    postMessage({ 
+                        type: 'error', 
+                        data: { message: `Parser error: ${e.message}` }
+                    });
+                }
             } else {
                 console.warn('[DB Worker] Received chunk before initialization');
             }
             break;
 
         case 'end':
-            if (isInitialized) {
+            if (parser) {
                 console.log('[DB Worker] End of stream received, finalizing...');
                 await finalizeProcessing();
             }
@@ -94,78 +150,16 @@ self.onmessage = async function(event) {
 };
 
 /**
- * Process a chunk of JSON data
- */
-function processChunk(chunk) {
-    buffer += chunk;
-    
-    // Parse objects from buffer
-    let startPos = 0;
-    
-    for (let i = 0; i < buffer.length; i++) {
-        const char = buffer[i];
-        
-        // Handle string detection
-        if (char === '"' && !escapeNext) {
-            inString = !inString;
-        }
-        
-        // Handle escape sequences
-        if (char === '\\' && !escapeNext) {
-            escapeNext = true;
-            continue;
-        } else {
-            escapeNext = false;
-        }
-        
-        // Track bracket depth when not in string
-        if (!inString) {
-            if (char === '{') {
-                if (bracketDepth === 0) {
-                    startPos = i;
-                }
-                bracketDepth++;
-            } else if (char === '}') {
-                bracketDepth--;
-                
-                // Complete object found
-                if (bracketDepth === 0) {
-                    const objectStr = buffer.substring(startPos, i + 1);
-                    try {
-                        const obj = JSON.parse(objectStr);
-                        processObject(obj);
-                        objectCount++;
-                    } catch (e) {
-                        // Invalid JSON object, skip it
-                        postMessage({ 
-                            type: 'log', 
-                            data: { 
-                                message: `Skipping invalid JSON object at position ${startPos}`,
-                                level: 'warning'
-                            }
-                        });
-                    }
-                    startPos = i + 1;
-                }
-            }
-        }
-    }
-    
-    // Keep unprocessed data in buffer
-    if (startPos > 0) {
-        buffer = buffer.substring(startPos);
-    }
-}
-
-/**
- * Process a single JSON object
+ * Process a single JSON object (Flattens and batches it)
  */
 function processObject(obj) {
+    objectCount++;
+    
     // Flatten nested objects
     const flatObj = flattenObject(obj);
     
     // Log first few objects for debugging
-    if (objectCount < 5) {
+    if (objectCount <= 5) {
         console.log(`[DB Worker] Processing object #${objectCount}:`, obj);
         console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
         console.log(`[DB Worker] Flattened keys:`, Object.keys(flatObj));
@@ -199,6 +193,8 @@ function processObject(obj) {
 
 /**
  * Flatten nested object into single-level object
+ * converts { configs: { id: 1 } } -> { configs_id: 1 }
+ * converts { tags: ["a", "b"] } -> { tags: '["a", "b"]' }
  */
 function flattenObject(obj, prefix = '') {
     const flattened = {};
@@ -211,12 +207,12 @@ function flattenObject(obj, prefix = '') {
         
         if (value === null || value === undefined) {
             flattened[newKey] = null;
-        } else if (typeof value === 'object' && !Array.isArray(value)) {
-            // Recursively flatten nested objects
-            Object.assign(flattened, flattenObject(value, newKey));
         } else if (Array.isArray(value)) {
-            // Store arrays as JSON strings
+            // Arrays become JSON strings (SQLite doesn't support Arrays)
             flattened[newKey] = JSON.stringify(value);
+        } else if (typeof value === 'object') {
+            // Recurse deeper
+            Object.assign(flattened, flattenObject(value, newKey));
         } else {
             flattened[newKey] = value;
         }
@@ -239,16 +235,11 @@ const schemaBuilder = {
             const type = detectType(value);
             
             if (!this.columns[key]) {
-                this.columns[key] = { name: key, type: type, nullable: false };
+                this.columns[key] = { name: key, type: type };
             } else {
                 // If types differ, use TEXT as fallback
                 if (this.columns[key].type !== type && value !== null) {
                     this.columns[key].type = 'TEXT';
-                }
-                
-                // Track if column can be null
-                if (value === null) {
-                    this.columns[key].nullable = true;
                 }
             }
         }
@@ -274,18 +265,10 @@ function detectType(value) {
     if (type === 'number') {
         return Number.isInteger(value) ? 'INTEGER' : 'REAL';
     } else if (type === 'boolean') {
-        return 'INTEGER';
+        return 'INTEGER'; // SQLite uses 0/1 for booleans
     } else {
         return 'TEXT';
     }
-}
-
-/**
- * Validate and sanitize SQL type to prevent injection
- */
-function validateSQLType(type) {
-    const allowedTypes = ['TEXT', 'INTEGER', 'REAL'];
-    return allowedTypes.includes(type) ? type : 'TEXT';
 }
 
 /**
@@ -307,7 +290,7 @@ function createTable() {
     
     // Build CREATE TABLE statement
     const columns = schema.map(col => {
-        return `"${sanitizeColumnName(col.name)}" ${validateSQLType(col.type)}`;
+        return `"${sanitize(col.name)}" ${col.type}`;
     }).join(', ');
     
     const createTableSQL = `CREATE TABLE "${tableName}" (${columns})`;
@@ -345,9 +328,9 @@ function createTable() {
 }
 
 /**
- * Sanitize column names for SQL
+ * Sanitize column/table names for SQL
  */
-function sanitizeColumnName(name) {
+function sanitize(name) {
     return name.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
@@ -363,7 +346,7 @@ function checkAndAddNewColumns(obj) {
         if (!existingColumnsSet.has(key)) {
             const value = obj[key];
             const type = detectType(value);
-            pendingColumns.push({ name: key, type: type, nullable: true });
+            pendingColumns.push({ name: key, type: type });
             // Add to set immediately to avoid duplicates in pending list
             existingColumnsSet.add(key);
         }
@@ -383,7 +366,7 @@ function applyPendingColumns() {
         db.run('BEGIN');
         
         for (const col of pendingColumns) {
-            const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${validateSQLType(col.type)}`;
+            const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitize(col.name)}" ${col.type}`;
             console.log('[DB Worker] ALTER TABLE SQL:', alterSQL);
             db.run(alterSQL);
             schema.push(col);
@@ -427,7 +410,7 @@ function insertBatch() {
     try {
         db.run('BEGIN');
         
-        const columnNames = schema.map(col => `"${sanitizeColumnName(col.name)}"`).join(', ');
+        const columnNames = schema.map(col => `"${sanitize(col.name)}"`).join(', ');
         const placeholders = schema.map(() => '?').join(', ');
         const insertSQL = `INSERT INTO "${tableName}" (${columnNames}) VALUES (${placeholders})`;
         
