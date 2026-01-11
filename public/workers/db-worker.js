@@ -30,18 +30,23 @@ let pendingColumns = [];
  */
 async function initDatabase() {
     try {
+        console.log('[DB Worker] Initializing SQL.js database...');
         postMessage({ type: 'log', data: { message: 'Loading SQL.js WASM...' } });
         
         const SQL = await initSqlJs({
             locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${file}`
         });
         
+        console.log('[DB Worker] SQL.js WASM loaded successfully');
+        
         db = new SQL.Database();
         
+        console.log('[DB Worker] Database created successfully');
         postMessage({ type: 'log', data: { message: 'Database initialized successfully' } });
         isInitialized = true;
         
     } catch (error) {
+        console.error('[DB Worker] Failed to initialize database:', error);
         postMessage({ 
             type: 'error', 
             data: { message: `Failed to initialize database: ${error.message}` }
@@ -55,27 +60,34 @@ async function initDatabase() {
 self.onmessage = async function(event) {
     const { type, data } = event.data;
 
+    console.log(`[DB Worker] Received message: ${type}`);
+
     switch (type) {
         case 'init':
             tableName = data.tableName || 'data';
             sampleSize = data.sampleSize || 100;
             batchSize = data.batchSize || 1000;
+            console.log('[DB Worker] Configuration:', { tableName, sampleSize, batchSize });
             await initDatabase();
             break;
 
         case 'chunk':
             if (isInitialized) {
                 processChunk(data);
+            } else {
+                console.warn('[DB Worker] Received chunk before initialization');
             }
             break;
 
         case 'end':
             if (isInitialized) {
+                console.log('[DB Worker] End of stream received, finalizing...');
                 await finalizeProcessing();
             }
             break;
 
         case 'export':
+            console.log('[DB Worker] Export requested');
             exportDatabase();
             break;
     }
@@ -151,6 +163,13 @@ function processChunk(chunk) {
 function processObject(obj) {
     // Flatten nested objects
     const flatObj = flattenObject(obj);
+    
+    // Log first few objects for debugging
+    if (objectCount < 5) {
+        console.log(`[DB Worker] Processing object #${objectCount}:`, obj);
+        console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
+        console.log(`[DB Worker] Flattened keys:`, Object.keys(flatObj));
+    }
     
     // Build schema from first N objects
     if (!schema && objectCount < sampleSize) {
@@ -275,7 +294,10 @@ function validateSQLType(type) {
 function createTable() {
     schema = schemaBuilder.getSchema();
     
+    console.log('[DB Worker] Creating table with schema:', schema);
+    
     if (schema.length === 0) {
+        console.error('[DB Worker] No schema detected from sample data');
         postMessage({ 
             type: 'error', 
             data: { message: 'No schema could be detected from sample data' }
@@ -290,11 +312,15 @@ function createTable() {
     
     const createTableSQL = `CREATE TABLE "${tableName}" (${columns})`;
     
+    console.log('[DB Worker] CREATE TABLE SQL:', createTableSQL);
+    
     try {
         db.run(createTableSQL);
         
         // Initialize the existing columns set
         existingColumnsSet = new Set(schema.map(col => col.name));
+        
+        console.log('[DB Worker] Table created successfully with columns:', schema.map(c => c.name));
         
         postMessage({ 
             type: 'schema', 
@@ -310,6 +336,7 @@ function createTable() {
         });
         
     } catch (error) {
+        console.error('[DB Worker] Failed to create table:', error);
         postMessage({ 
             type: 'error', 
             data: { message: `Failed to create table: ${error.message}` }
@@ -349,12 +376,15 @@ function checkAndAddNewColumns(obj) {
 function applyPendingColumns() {
     if (pendingColumns.length === 0) return;
     
+    console.log(`[DB Worker] Adding ${pendingColumns.length} new columns:`, pendingColumns);
+    
     try {
         // Use transaction for atomicity
         db.run('BEGIN');
         
         for (const col of pendingColumns) {
             const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${validateSQLType(col.type)}`;
+            console.log('[DB Worker] ALTER TABLE SQL:', alterSQL);
             db.run(alterSQL);
             schema.push(col);
             
@@ -368,8 +398,10 @@ function applyPendingColumns() {
         }
         
         db.run('COMMIT');
+        console.log('[DB Worker] New columns added successfully');
         pendingColumns = [];
     } catch (error) {
+        console.error('[DB Worker] Failed to add new columns:', error);
         db.run('ROLLBACK');
         postMessage({ 
             type: 'error', 
@@ -383,6 +415,14 @@ function applyPendingColumns() {
  */
 function insertBatch() {
     if (currentBatch.length === 0) return;
+    
+    console.log(`[DB Worker] Inserting batch of ${currentBatch.length} rows`);
+    
+    // Log first row of each batch for debugging
+    if (currentBatch.length > 0 && (rowsProcessed === 0 || rowsProcessed % (batchSize * 10) === 0)) {
+        console.log('[DB Worker] Sample row from batch:', currentBatch[0]);
+        console.log('[DB Worker] Sample row keys:', Object.keys(currentBatch[0]));
+    }
     
     try {
         db.run('BEGIN');
@@ -413,6 +453,7 @@ function insertBatch() {
         db.run('COMMIT');
         
         rowsProcessed += currentBatch.length;
+        console.log(`[DB Worker] Batch inserted successfully. Total rows: ${rowsProcessed}`);
         currentBatch = [];
         
         // Report progress
@@ -430,6 +471,7 @@ function insertBatch() {
         });
         
     } catch (error) {
+        console.error('[DB Worker] Failed to insert batch:', error);
         db.run('ROLLBACK');
         postMessage({ 
             type: 'error', 
@@ -442,6 +484,10 @@ function insertBatch() {
  * Finalize processing and insert remaining rows
  */
 async function finalizeProcessing() {
+    console.log('[DB Worker] Finalizing processing...');
+    console.log(`[DB Worker] Total objects parsed: ${objectCount}`);
+    console.log(`[DB Worker] Remaining batch size: ${currentBatch.length}`);
+    
     // Create table if not created yet (for small files)
     if (!schema && objectCount > 0) {
         createTable();
@@ -458,6 +504,9 @@ async function finalizeProcessing() {
     // Get database size
     const dbData = db.export();
     const dbSize = dbData.byteLength;
+    
+    console.log('[DB Worker] Processing complete!');
+    console.log(`[DB Worker] Final statistics - Total rows: ${rowsProcessed}, DB size: ${dbSize} bytes`);
     
     postMessage({
         type: 'complete',
@@ -477,8 +526,10 @@ async function finalizeProcessing() {
  * Export database as binary data
  */
 function exportDatabase() {
+    console.log('[DB Worker] Exporting database...');
     try {
         const data = db.export();
+        console.log(`[DB Worker] Database exported successfully: ${data.byteLength} bytes`);
         postMessage({
             type: 'exported',
             data: data
@@ -490,6 +541,7 @@ function exportDatabase() {
         });
         
     } catch (error) {
+        console.error('[DB Worker] Failed to export database:', error);
         postMessage({
             type: 'error',
             data: { message: `Failed to export database: ${error.message}` }

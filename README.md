@@ -195,6 +195,17 @@ Requires:
 
 ## 🐛 Troubleshooting
 
+### Debugging
+
+The app now includes comprehensive console logging! Open your browser's developer console (F12) to see:
+- Detailed processing information
+- Object structure and flattening
+- Schema detection steps
+- Batch insertion progress
+- Any errors or warnings
+
+See [DEBUGGING.md](DEBUGGING.md) for a complete debugging guide.
+
 ### "Out of Memory" Error
 
 - Reduce batch size
