@@ -165,8 +165,7 @@ function processObject(obj) {
     // Log first few objects for debugging
     if (objectCount <= 5) {
         console.log(`[DB Worker] Processing object #${objectCount}:`, obj);
-        console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
-        console.log(`[DB Worker] Flattened keys:`, Object.keys(flatObj));
+        // console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
     }
     
     // Build schema from first N objects
@@ -179,20 +178,24 @@ function processObject(obj) {
         createTable();
     }
     
-    // Add to batch
+    // --- FIX STARTS HERE ---
+    
+    // 1. Always add to batch, even if schema is still being built
+    currentBatch.push(flatObj);
+
+    // 2. If schema exists, check for new columns on this specific object
     if (schema) {
-        // Check for new columns (adds to pending list)
         checkAndAddNewColumns(flatObj);
-        
-        currentBatch.push(flatObj);
-        
-        // Insert batch when full
-        if (currentBatch.length >= batchSize) {
-            // Apply any pending column additions before inserting
-            applyPendingColumns();
-            insertBatch();
-        }
     }
+    
+    // 3. Insert batch only if we have a schema AND the batch is full
+    if (schema && currentBatch.length >= batchSize) {
+        // Apply any pending column additions before inserting
+        applyPendingColumns();
+        insertBatch();
+    }
+
+    // --- FIX ENDS HERE ---
 }
 
 /**
