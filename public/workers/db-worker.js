@@ -4,6 +4,10 @@
 // Import SQL.js from CDN using classic worker syntax
 importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
 
+// Import streaming JSON parser using UMD build
+// This avoids CORS/Dynamic Import issues with ESM modules in classic workers
+importScripts('https://unpkg.com/@streamparser/json@0.0.23/dist/json.min.js');
+
 let db = null;
 let tableName = 'data';
 let sampleSize = 100;
@@ -15,15 +19,14 @@ let currentBatch = [];
 let existingColumnsSet = new Set();
 let pendingColumns = [];
 let parser = null;
-let JSONParser = null;
 
 /**
  * Initialize the Stream Parser
  * 
- * Note: This uses dynamic ES module loading because:
- * 1. The @streamparser/json library is ESM-only
- * 2. Classic workers (needed for importScripts) don't support ES modules natively
- * 3. The library is loaded from esm.sh CDN which properly handles ESM module resolution
+ * Note: This uses importScripts to load the UMD build because:
+ * 1. The @streamparser/json library has a UMD build available
+ * 2. Classic workers (needed for SQL.js importScripts) work best with importScripts for all dependencies
+ * 3. Using importScripts avoids CORS issues that can occur with dynamic import()
  * 
  * For production deployments with strict security requirements, consider:
  * - Hosting the library locally
@@ -32,9 +35,12 @@ let JSONParser = null;
  */
 async function initParser() {
     try {
-        // Load the core library
-        const module = await import('https://esm.sh/@streamparser/json@0.0.23');
-        JSONParser = module.JSONParser;
+        // Use the global JSONParser exposed by the importScripts above
+        if (typeof self.JSONParser === 'undefined') {
+            throw new Error('JSONParser library failed to load via importScripts');
+        }
+
+        const JSONParser = self.JSONParser;
         
         // Capture the root element
         parser = new JSONParser({ paths: ['$'], keepStack: false });
@@ -65,6 +71,8 @@ async function initParser() {
         
     } catch (error) {
         console.error('[DB Worker] Failed to initialize parser:', error);
+        // Re-throw the error so initDatabase knows initialization failed
+        throw error;
     }
 }
 
