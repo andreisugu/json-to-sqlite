@@ -16,6 +16,8 @@ let existingColumnsSet = new Set();
 let pendingColumns = [];
 let parser = null;
 let parserWriter = null;
+let parserReader = null;
+let parserReadPromise = null;
 let JSONParser = null;
 
 /**
@@ -50,13 +52,14 @@ async function initParser() {
         parserWriter = parser.writable.getWriter();
         
         // Set up the readable stream to consume parsed values
-        const reader = parser.readable.getReader();
+        parserReader = parser.readable.getReader();
         
         // Read parsed values in the background
-        (async () => {
+        // Store the promise so we can wait for it to complete
+        parserReadPromise = (async () => {
             try {
                 while (true) {
-                    const { done, value } = await reader.read();
+                    const { done, value } = await parserReader.read();
                     if (done) break;
                     
                     // Process each parsed object
@@ -156,9 +159,12 @@ self.onmessage = async function(event) {
                 console.log('[DB Worker] End of stream received, closing parser...');
                 try {
                     await parserWriter.close();
-                    console.log('[DB Worker] Parser closed, finalizing...');
-                    // Wait a bit for any pending parsed values to be processed
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    console.log('[DB Worker] Parser closed, waiting for all values to be processed...');
+                    // Wait for the reader to finish processing all parsed values
+                    if (parserReadPromise) {
+                        await parserReadPromise;
+                    }
+                    console.log('[DB Worker] All values processed, finalizing...');
                     await finalizeProcessing();
                 } catch (e) {
                     console.error('[DB Worker] Error closing parser:', e);
