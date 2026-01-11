@@ -15,22 +15,15 @@ let currentBatch = [];
 let existingColumnsSet = new Set();
 let pendingColumns = [];
 let parser = null;
-let parserWriter = null;
-let parserReader = null;
-let parserReadPromise = null;
 let JSONParser = null;
 
 /**
  * Initialize the Stream Parser
  * 
  * Note: This uses dynamic ES module loading because:
- * 1. The @streamparser/json-whatwg library is ESM-only
+ * 1. The @streamparser/json library is ESM-only
  * 2. Classic workers (needed for importScripts) don't support ES modules natively
  * 3. The library is loaded from esm.sh CDN which properly handles ESM module resolution
- * 
- * The @streamparser/json-whatwg library uses WHATWG Streams API:
- * - parser.writable is a WritableStream
- * - We need to get a writer from it to write chunks
  * 
  * For production deployments with strict security requirements, consider:
  * - Hosting the library locally
@@ -39,51 +32,39 @@ let JSONParser = null;
  */
 async function initParser() {
     try {
-        // Dynamically load the JSON parser library using esm.sh CDN
-        // esm.sh properly handles ESM module resolution unlike blob URLs
-        const module = await import('https://esm.sh/@streamparser/json-whatwg@0.0.22');
+        // Load the core library
+        const module = await import('https://esm.sh/@streamparser/json@0.0.23');
         JSONParser = module.JSONParser;
         
-        // paths: ['$[*]'] means "Give me every item inside the root array"
-        // keepStack: false keeps memory usage low
-        parser = new JSONParser({ paths: ['$[*]'], keepStack: false });
+        // Capture the root element
+        parser = new JSONParser({ paths: ['$'], keepStack: false });
         
-        // Get a writer from the parser's writable stream
-        parserWriter = parser.writable.getWriter();
-        
-        // Set up the readable stream to consume parsed values
-        parserReader = parser.readable.getReader();
-        
-        // Read parsed values in the background
-        // Store the promise so we can wait for it to complete
-        parserReadPromise = (async () => {
-            try {
-                while (true) {
-                    const { done, value } = await parserReader.read();
-                    if (done) break;
-                    
-                    // Process each parsed object
-                    // The parser emits objects with { value, key, parent, stack, partial }
-                    // We need to extract the actual value from this metadata
-                    if (value && value.value !== undefined) {
-                        processObject(value.value);
-                    }
+        parser.onValue = (event) => {
+            const realData = event.value;
+
+            if (Array.isArray(realData)) {
+                // If the parser gave us the whole list at once (common for small files),
+                // we MUST loop through it to create individual rows.
+                console.log(`[DB Worker] Unwrapping array of ${realData.length} items...`);
+                for (const item of realData) {
+                    processObject(item);
                 }
-            } catch (err) {
-                console.error('[DB Worker] JSON Parse Error:', err);
-                postMessage({ 
-                    type: 'error', 
-                    data: { message: `JSON Parse Error: ${err.message}` }
-                });
+            } else {
+                // It's a single object (streaming mode)
+                processObject(realData);
             }
-        })();
+        };
+        
+        parser.onError = (err) => {
+            console.error('[DB Worker] JSON Parse Error:', err);
+            postMessage({ 
+                type: 'error', 
+                data: { message: `JSON Parse Error: ${err.message}` }
+            });
+        };
         
     } catch (error) {
         console.error('[DB Worker] Failed to initialize parser:', error);
-        postMessage({ 
-            type: 'error', 
-            data: { message: `Failed to initialize parser: ${error.message}` }
-        });
     }
 }
 
@@ -139,11 +120,10 @@ self.onmessage = async function(event) {
             break;
 
         case 'chunk':
-            // Write the chunk to the parser using the WHATWG Streams API
-            // The parser's writable stream will handle partial JSON and buffer management
-            if (parserWriter) {
+            // Write the chunk to the parser
+            if (parser) {
                 try {
-                    await parserWriter.write(data);
+                    parser.write(data);
                 } catch (e) {
                     console.error('[DB Worker] Parser Write Error:', e);
                     postMessage({ 
@@ -157,21 +137,16 @@ self.onmessage = async function(event) {
             break;
 
         case 'end':
-            if (parserWriter) {
-                console.log('[DB Worker] End of stream received, closing parser...');
+            if (parser) {
+                console.log('[DB Worker] End of stream received, finalizing...');
                 try {
-                    await parserWriter.close();
-                    console.log('[DB Worker] Parser closed, waiting for all values to be processed...');
-                    // Wait for the reader to finish processing all parsed values
-                    if (parserReadPromise) {
-                        await parserReadPromise;
-                    }
-                    console.log('[DB Worker] All values processed, finalizing...');
-                    await finalizeProcessing();
-                } catch (e) {
-                    console.error('[DB Worker] Error closing parser:', e);
-                    await finalizeProcessing();
+                    // Try to close cleanly, but ignore if already closed
+                    if (parser.close) parser.close(); 
+                } catch(e) { 
+                    console.debug('[DB Worker] Parser already closed:', e);
                 }
+                
+                await finalizeProcessing();
             }
             break;
 
@@ -194,8 +169,7 @@ function processObject(obj) {
     // Log first few objects for debugging
     if (objectCount <= 5) {
         console.log(`[DB Worker] Processing object #${objectCount}:`, obj);
-        console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
-        console.log(`[DB Worker] Flattened keys:`, Object.keys(flatObj));
+        // console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
     }
     
     // Build schema from first N objects
@@ -208,19 +182,19 @@ function processObject(obj) {
         createTable();
     }
     
-    // Add to batch
+    // Always add to batch, even if schema is still being built
+    currentBatch.push(flatObj);
+
+    // If schema exists, check for new columns on this specific object
     if (schema) {
-        // Check for new columns (adds to pending list)
         checkAndAddNewColumns(flatObj);
-        
-        currentBatch.push(flatObj);
-        
-        // Insert batch when full
-        if (currentBatch.length >= batchSize) {
-            // Apply any pending column additions before inserting
-            applyPendingColumns();
-            insertBatch();
-        }
+    }
+    
+    // Insert batch only if we have a schema AND the batch is full
+    if (schema && currentBatch.length >= batchSize) {
+        // Apply any pending column additions before inserting
+        applyPendingColumns();
+        insertBatch();
     }
 }
 
