@@ -26,20 +26,27 @@ This tool implements a "Bucket Brigade" architecture:
 
 ### Technology Stack
 
+- **Next.js 14**: React framework with static export for GitHub Pages
+- **TypeScript**: Type-safe development
+- **Tailwind CSS**: Modern, responsive styling
 - **SQL.js**: SQLite compiled to WebAssembly for browser execution
 - **Web Workers**: Prevents UI freezing during processing
 - **File API**: Reads local files without uploading
 - **Streaming Parser**: Custom chunk-based JSON parser for memory efficiency
-- **Vanilla JavaScript**: No framework dependencies
 
 ## 🚀 Quick Start
 
 ### GitHub Pages Deployment
 
+This repository is configured for automatic deployment to GitHub Pages:
+
 1. Fork this repository
-2. Enable GitHub Pages in Settings → Pages
-3. Set source to `main` branch
-4. Visit `https://yourusername.github.io/json-to-sqlite/`
+2. Go to Settings → Pages
+3. Set Source to "GitHub Actions"
+4. Push to the `main` branch - the site will deploy automatically
+5. Visit `https://yourusername.github.io/json-to-sqlite/`
+
+The deployment workflow runs automatically on every push to the main branch.
 
 ### Local Development
 
@@ -48,13 +55,28 @@ This tool implements a "Bucket Brigade" architecture:
 git clone https://github.com/andreisugu/json-to-sqlite.git
 cd json-to-sqlite
 
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Open browser to http://localhost:3000
+```
+
 # Install dependencies (optional, for development server)
 npm install
 
 # Start development server
 npm run dev
 
-# Open browser to http://localhost:8000
+# Build for production
+npm run build
+
+# Open browser to http://localhost:3000
 ```
 
 ## 📖 Usage

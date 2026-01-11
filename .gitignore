@@ -3,3 +3,7 @@ node_modules/
 *.log
 dist/
 .cache/
+*.tsbuildinfo
+.next/
+out/
+.vercel
