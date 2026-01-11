@@ -61,9 +61,10 @@ Your data stays **100% local** - no servers, no uploads, no tracking:
 
 - **Client-side only**: All processing happens in your browser's JavaScript engine
 - **WASM sandbox**: SQLite runs in WebAssembly with no external access
-- **No network calls**: Data never leaves your device (except CDN library loads)
+- **No network calls**: Data never leaves your device (after initial library loads)
 - **Perfect for sensitive data**: Medical records, financial data, personal information - all stays private
-- **Offline capable**: Once loaded, can work without internet connection
+- **Offline capable**: Full Progressive Web App (PWA) support - works completely offline after first visit
+- **Install as app**: Can be installed on your device and used like a native application
 
 ## 🆚 Comparison with Traditional Approaches
 
@@ -376,6 +377,45 @@ Requires:
 - File API
 - WebAssembly
 - ES6 modules
+- Service Workers (for offline functionality)
+
+### Progressive Web App (PWA) Support
+
+This application is a **full Progressive Web App** with complete offline functionality:
+
+**Features**:
+- ✅ **Service Worker**: Automatically caches all resources for offline use
+- ✅ **Web App Manifest**: Can be installed as a standalone app on any device
+- ✅ **Offline-First**: Works completely offline after first visit
+- ✅ **Smart Caching**: Network-first for HTML, cache-first for static assets
+- ✅ **CDN Caching**: External dependencies (SQL.js, JSON parser) are cached locally
+- ✅ **Auto-Update**: New versions are detected and installed automatically
+
+**How It Works**:
+1. On first visit, the service worker caches all essential resources
+2. CDN dependencies (SQL.js, streaming parser, WASM) are cached
+3. Subsequent visits load instantly from cache
+4. Works completely offline - no internet needed after first load
+5. Updates are downloaded in the background and applied on next visit
+
+**Installation**:
+- On mobile: Use "Add to Home Screen" from browser menu
+- On desktop: Look for install prompt in address bar or browser menu
+- Once installed, the app behaves like a native application
+
+**Cached Resources**:
+- Application code (HTML, CSS, JavaScript)
+- Icons and manifest
+- Database worker script
+- External libraries: SQL.js, @streamparser/json
+- SQLite WebAssembly binary
+
+This means you can:
+- 🔒 Convert sensitive files with zero network access
+- ✈️ Use the tool while traveling without internet
+- 🏔️ Work in remote locations without connectivity
+- 🚀 Experience instant loading after first visit
+- 💾 Install as a dedicated app on your device
 
 ### Module Workers: A Technical Achievement
 
