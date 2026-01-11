@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Upload, Download, RotateCcw } from 'lucide-react';
 
 interface WorkerMessage {
-  type: 'log' | 'status' | 'progress' | 'schema' | 'complete' | 'error' | 'exported';
+  type: 'log' | 'status' | 'progress' | 'schema' | 'complete' | 'error' | 'exported' | 'READY';
   data: any;
 }
 
@@ -121,6 +121,14 @@ export default function Home() {
     console.log('[Main] Worker message received:', type, data);
 
     switch (type) {
+      case 'READY':
+        console.log('[Main] Worker is ready, starting file stream...');
+        addLog('Worker ready, starting file stream...');
+        // Start streaming the file now that worker is ready
+        if (selectedFile) {
+          streamFile(selectedFile);
+        }
+        break;
       case 'log':
         addLog(data.message, data.level);
         break;
@@ -201,8 +209,8 @@ export default function Home() {
         }
       });
 
-      addLog('Starting to stream JSON file...');
-      await streamFile(selectedFile);
+      // Don't start streaming here - wait for READY message from worker
+      addLog('Waiting for worker to initialize...');
 
     } catch (error) {
       console.error('[Main] Conversion error:', error);
@@ -215,37 +223,59 @@ export default function Home() {
   const streamFile = async (file: File) => {
     console.log('[Main] Starting file streaming...');
     setStatus('Streaming file...');
-    const chunkSize = 64 * 1024;
-    let offset = 0;
-    const fileSize = file.size;
-    let chunkCount = 0;
-
-    while (offset < fileSize) {
-      const chunk = file.slice(offset, offset + chunkSize);
-      const arrayBuffer = await chunk.arrayBuffer();
-      const text = new TextDecoder().decode(arrayBuffer);
+    
+    try {
+      // Use TextDecoderStream to convert bytes to text automatically
+      // Explicitly specify UTF-8 encoding (which is the default, but makes intention clear)
+      const stream = file.stream().pipeThrough(new TextDecoderStream('utf-8'));
+      const reader = stream.getReader();
       
-      workerRef.current?.postMessage({
-        type: 'chunk',
-        data: text
-      });
-
-      offset += chunkSize;
-      chunkCount++;
-      const readProgress = Math.min((offset / fileSize) * 50, 50);
-      setProgress(readProgress);
+      let chunkCount = 0;
+      const fileSize = file.size;
+      let charsRead = 0;
       
-      if (chunkCount % 100 === 0) {
-        console.log(`[Main] Streamed ${chunkCount} chunks (${offset} / ${fileSize} bytes)`);
+      // Browser's typical read buffer size is 64KB (65536 bytes)
+      // This is used for rough progress estimation only
+      // Note: Actual chunk count may vary due to UTF-8 encoding and browser buffering
+      const ESTIMATED_CHUNK_SIZE = 65536;
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // 'value' is now a guaranteed String
+        workerRef.current?.postMessage({
+          type: 'chunk',
+          data: value
+        });
+        
+        chunkCount++;
+        charsRead += value.length;
+        // Use chunk count for progress estimation since char count != byte count for UTF-8
+        const estimatedChunks = Math.ceil(fileSize / ESTIMATED_CHUNK_SIZE);
+        const readProgress = Math.min((chunkCount / estimatedChunks) * 50, 50);
+        setProgress(readProgress);
+        
+        if (chunkCount % 100 === 0) {
+          console.log(`[Main] Streamed ${chunkCount} chunks (${charsRead} chars)`);
+        }
+        
+        // Yield to event loop every 10 chunks to maintain UI responsiveness
+        if (chunkCount % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
       }
       
-      await new Promise(resolve => setTimeout(resolve, 0));
+      console.log(`[Main] File streaming complete. Total chunks: ${chunkCount}`);
+      workerRef.current?.postMessage({ type: 'end' });
+      addLog('File streaming complete, processing data...');
+      setStatus('Processing data...');
+    } catch (error) {
+      console.error('[Main] File streaming error:', error);
+      addLog(`File streaming error: ${(error as Error).message}`, 'error');
+      setStatus('Error occurred');
+      if (timerRef.current) clearInterval(timerRef.current);
     }
-
-    console.log(`[Main] File streaming complete. Total chunks: ${chunkCount}`);
-    workerRef.current?.postMessage({ type: 'end' });
-    addLog('File streaming complete, processing data...');
-    setStatus('Processing data...');
   };
 
   const downloadDatabase = () => {
