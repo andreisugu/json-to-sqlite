@@ -27,12 +27,12 @@ This isn't just another JSON converter - it's a production-grade streaming data 
 
 Unlike traditional converters that load the entire file into RAM, this implementation uses a **streaming parser** that processes data in chunks:
 
-- **Chunk-based processing**: Files are read in 10MB chunks via the File API
+- **Chunk-based processing**: Files are read in 64KB chunks via the File API
 - **Incremental parsing**: JSON objects are parsed as chunks arrive using `@streamparser/json`
 - **Batch inserts**: Objects are written to SQLite in configurable batches (default: 1000 rows)
 - **Memory efficiency**: A 1GB file can be converted on a device with only 2GB RAM without crashes
 
-**Technical Flow**: `File → 10MB Chunks → Stream Parser → Objects → Batch Buffer → SQLite`
+**Technical Flow**: `File → 64KB Chunks → Stream Parser → Objects → Batch Buffer (1000 rows) → SQLite`
 
 ### 🚀 Zero UI Blocking
 
@@ -119,7 +119,7 @@ This tool implements a **streaming "Bucket Brigade" architecture** with three in
 
 3. **Schema Evolution (Web Worker)**
    - Scans first N objects (default: 100) to build initial schema
-   - Flattens nested objects into dot-notation columns
+   - Flattens nested objects into underscore-notation columns (`user_address_city`)
    - Detects data types (INTEGER, REAL, TEXT)
    - Dynamically adds columns when new fields appear
    - Backfills existing rows with NULL for new columns
