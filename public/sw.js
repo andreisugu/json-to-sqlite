@@ -15,6 +15,7 @@ const CORE_ASSETS = [
 ];
 
 // External CDN resources used by the worker
+// Note: These URLs must match the imports in public/workers/db-worker.js
 const CDN_RESOURCES = [
   'https://esm.sh/sql.js@1.10.3',
   'https://esm.sh/@streamparser/json@0.0.22',
@@ -103,7 +104,9 @@ self.addEventListener('fetch', (event) => {
   }
   
   // Determine caching strategy based on resource type
-  const isHTML = request.headers.get('accept')?.includes('text/html');
+  const isHTML = request.destination === 'document' || 
+                 (request.headers.get('accept')?.includes('text/html') && 
+                  request.mode === 'navigate');
   const isCDN = url.hostname === 'esm.sh' || url.hostname === 'cdnjs.cloudflare.com';
   const isAppResource = url.origin === location.origin;
   
@@ -139,7 +142,7 @@ self.addEventListener('fetch', (event) => {
         console.log('[Service Worker] Fetching from network:', request.url);
         return fetch(request).then((response) => {
           // Don't cache non-successful responses
-          if (!response || response.status !== 200) {
+          if (!response || !response.ok) {
             return response;
           }
           
