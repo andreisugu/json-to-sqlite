@@ -6,7 +6,7 @@ importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
 
 // Import streaming JSON parser using UMD build
 // This avoids CORS/Dynamic Import issues with ESM modules in classic workers
-importScripts('https://unpkg.com/@streamparser/json@0.0.23/dist/json.min.js');
+importScripts('https://cdn.jsdelivr.net/npm/@streamparser/json@0.0.23/dist/json.min.js');
 
 let db = null;
 let tableName = 'data';
@@ -35,44 +35,31 @@ let parser = null;
  */
 async function initParser() {
     try {
-        // Use the global JSONParser exposed by the importScripts above
         if (typeof self.JSONParser === 'undefined') {
             throw new Error('JSONParser library failed to load via importScripts');
         }
 
         const JSONParser = self.JSONParser;
-        
-        // Capture the root element
         parser = new JSONParser({ paths: ['$'], keepStack: false });
         
         parser.onValue = (event) => {
             const realData = event.value;
-
             if (Array.isArray(realData)) {
-                // If the parser gave us the whole list at once (common for small files),
-                // we MUST loop through it to create individual rows.
-                console.log(`[DB Worker] Unwrapping array of ${realData.length} items...`);
-                for (const item of realData) {
-                    processObject(item);
-                }
+                for (const item of realData) processObject(item);
             } else {
-                // It's a single object (streaming mode)
                 processObject(realData);
             }
         };
         
         parser.onError = (err) => {
             console.error('[DB Worker] JSON Parse Error:', err);
-            postMessage({ 
-                type: 'error', 
-                data: { message: `JSON Parse Error: ${err.message}` }
-            });
+            postMessage({ type: 'error', data: { message: `JSON Parse Error: ${err.message}` } });
         };
         
     } catch (error) {
-        console.error('[DB Worker] Failed to initialize parser:', error);
-        // Re-throw the error so initDatabase knows initialization failed
-        throw error;
+        // THIS IS THE CRITICAL FIX: Throw the error so initDatabase stops!
+        console.error('[DB Worker] Parser Init Failed:', error);
+        throw error; 
     }
 }
 
@@ -170,39 +157,29 @@ self.onmessage = async function(event) {
  */
 function processObject(obj) {
     objectCount++;
-    
-    // Flatten nested objects
     const flatObj = flattenObject(obj);
     
-    // Log first few objects for debugging
-    if (objectCount <= 5) {
-        console.log(`[DB Worker] Processing object #${objectCount}:`, obj);
-        // console.log(`[DB Worker] Flattened object #${objectCount}:`, flatObj);
-    }
-    
-    // Build schema from first N objects
+    // 1. Build schema if needed
     if (!schema && objectCount < sampleSize) {
         buildSchema(flatObj);
     }
     
-    // Create table once schema is determined
+    // 2. Create table if needed
     if (!schema && objectCount >= sampleSize) {
         createTable();
     }
     
-    // Always add to batch, even if schema is still being built
+    // 3. FIX: ALWAYS push to batch, do not check "if (schema)" yet
     currentBatch.push(flatObj);
 
-    // If schema exists, check for new columns on this specific object
+    // 4. If schema is ready, process the batch
     if (schema) {
         checkAndAddNewColumns(flatObj);
-    }
-    
-    // Insert batch only if we have a schema AND the batch is full
-    if (schema && currentBatch.length >= batchSize) {
-        // Apply any pending column additions before inserting
-        applyPendingColumns();
-        insertBatch();
+        
+        if (currentBatch.length >= batchSize) {
+            applyPendingColumns();
+            insertBatch();
+        }
     }
 }
 
