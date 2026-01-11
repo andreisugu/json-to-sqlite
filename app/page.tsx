@@ -190,7 +190,7 @@ export default function Home() {
     try {
       addLog('Initializing database worker...');
       const basePath = '/json-to-sqlite';
-      workerRef.current = new Worker(`${basePath}/workers/db-worker.js`);
+      workerRef.current = new Worker(`${basePath}/workers/db-worker.js`, { type: 'module' });
       workerRef.current.onmessage = handleWorkerMessage;
       workerRef.current.onerror = (error) => {
         console.error('[Main] Worker error:', error);
