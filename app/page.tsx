@@ -170,7 +170,7 @@ export default function Home() {
 
     try {
       addLog('Initializing database worker...');
-      const basePath = process.env.NODE_ENV === 'production' ? '/json-to-sqlite' : '';
+      const basePath = '/json-to-sqlite';
       workerRef.current = new Worker(`${basePath}/workers/db-worker.js`);
       workerRef.current.onmessage = handleWorkerMessage;
       workerRef.current.onerror = (error) => {
