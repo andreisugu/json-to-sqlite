@@ -226,12 +226,16 @@ export default function Home() {
     
     try {
       // Use TextDecoderStream to convert bytes to text automatically
-      const stream = file.stream().pipeThrough(new TextDecoderStream());
+      // Explicitly specify UTF-8 encoding (which is the default, but makes intention clear)
+      const stream = file.stream().pipeThrough(new TextDecoderStream('utf-8'));
       const reader = stream.getReader();
       
       let chunkCount = 0;
       const fileSize = file.size;
       let charsRead = 0;
+      
+      // Estimated chunk size from the browser's default read buffer (typically 64KB)
+      const ESTIMATED_CHUNK_SIZE = 65536;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -245,8 +249,9 @@ export default function Home() {
         
         chunkCount++;
         charsRead += value.length;
-        // Use chunk count for progress since char count != byte count for UTF-8
-        const readProgress = Math.min((chunkCount / (fileSize / 65536 + 1)) * 50, 50);
+        // Use chunk count for progress estimation since char count != byte count for UTF-8
+        const estimatedChunks = Math.ceil(fileSize / ESTIMATED_CHUNK_SIZE);
+        const readProgress = Math.min((chunkCount / estimatedChunks) * 50, 50);
         setProgress(readProgress);
         
         if (chunkCount % 100 === 0) {
