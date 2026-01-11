@@ -1,12 +1,11 @@
 // Database worker: Uses streaming JSON parser for robust parsing
 // This runs in a separate thread to prevent UI blocking
 
-// Import SQL.js from CDN using classic worker syntax
-importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
+// Import SQL.js from esm.sh (ES module CDN)
+import initSqlJs from 'https://esm.sh/sql.js@1.10.3';
 
-// Import streaming JSON parser using UMD build
-// This avoids CORS/Dynamic Import issues with ESM modules in classic workers
-importScripts('https://cdn.jsdelivr.net/npm/@streamparser/json@0.0.22/dist/json.min.js');
+// Import streaming JSON parser from esm.sh
+import { JSONParser } from 'https://esm.sh/@streamparser/json@0.0.22';
 
 let db = null;
 let tableName = 'data';
@@ -23,10 +22,10 @@ let parser = null;
 /**
  * Initialize the Stream Parser
  * 
- * Note: This uses importScripts to load the UMD build because:
- * 1. The @streamparser/json library has a UMD build available
- * 2. Classic workers (needed for SQL.js importScripts) work best with importScripts for all dependencies
- * 3. Using importScripts avoids CORS issues that can occur with dynamic import()
+ * Note: This uses ES module imports from esm.sh CDN because:
+ * 1. Module workers support native ES module imports
+ * 2. esm.sh automatically handles module conversion and compatibility
+ * 3. This is the modern, recommended approach for web workers
  * 
  * For production deployments with strict security requirements, consider:
  * - Hosting the library locally
@@ -35,11 +34,6 @@ let parser = null;
  */
 async function initParser() {
     try {
-        if (typeof self.JSONParser === 'undefined') {
-            throw new Error('JSONParser library failed to load via importScripts');
-        }
-
-        const JSONParser = self.JSONParser;
         parser = new JSONParser({ paths: ['$'], keepStack: false });
         
         parser.onValue = (event) => {
@@ -71,8 +65,11 @@ async function initDatabase() {
         console.log('[DB Worker] Initializing SQL.js database...');
         postMessage({ type: 'log', data: { message: 'Loading SQL.js WASM...' } });
         
+        // Note: esm.sh is used for the ES module imports (above), but cdnjs is used
+        // for the WASM file location. This is intentional - esm.sh handles the JS
+        // module conversion, while cdnjs provides reliable WASM file hosting.
         const SQL = await initSqlJs({
-            locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${file}`
+            locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
         });
         
         console.log('[DB Worker] SQL.js WASM loaded successfully');
