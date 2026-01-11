@@ -1,0 +1,40 @@
+{
+  "name": "json-to-sqlite",
+  "version": "1.0.0",
+  "description": "A browser-based tool to convert large JSON files to SQLite databases",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "export": "next build && next export"
+  },
+  "keywords": [
+    "json",
+    "sqlite",
+    "browser",
+    "converter",
+    "streaming"
+  ],
+  "author": "Andrei Șugubete",
+  "license": "MIT",
+  "dependencies": {
+    "lucide-react": "^0.309.0",
+    "next": "^14.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/sql.js": "^1.4.9",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.1.0",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3"
+  }
+}

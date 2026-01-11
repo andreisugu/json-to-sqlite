@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #3b82f6;
+  --primary-dark: #2563eb;
+  --success-color: #10b981;
+  --danger-color: #ef4444;
+}
+
+body {
+  @apply min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800;
+}
