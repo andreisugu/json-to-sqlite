@@ -1,8 +1,8 @@
-// Database worker: Uses @streamparser/json for robust parsing
+// Database worker: Uses streaming JSON parser for robust parsing
 // This runs in a separate thread to prevent UI blocking
 
-// Import streaming JSON parser as ES module
-import { JSONParser } from 'https://cdn.jsdelivr.net/npm/@streamparser/json-whatwg@0.0.21/+esm';
+// Import SQL.js from CDN using classic worker syntax
+importScripts('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
 
 let db = null;
 let tableName = 'data';
@@ -15,28 +15,48 @@ let currentBatch = [];
 let existingColumnsSet = new Set();
 let pendingColumns = [];
 let parser = null;
-let initSqlJs = null;
+let JSONParser = null;
 
 /**
  * Initialize the Stream Parser
  */
-function initParser() {
-    // paths: ['$[*]'] means "Give me every item inside the root array"
-    // keepStack: false keeps memory usage low
-    parser = new JSONParser({ paths: ['$[*]'], keepStack: false });
-    
-    parser.onValue = ({ value }) => {
-        // This fires exactly once per complete object in your array
-        processObject(value);
-    };
-    
-    parser.onError = (err) => {
-        console.error('[DB Worker] JSON Parse Error:', err);
+async function initParser() {
+    try {
+        // Dynamically load the JSON parser library
+        const response = await fetch('https://cdn.jsdelivr.net/npm/@streamparser/json-whatwg@0.0.21/+esm');
+        const moduleText = await response.text();
+        
+        // Create a blob URL for the module
+        const blob = new Blob([moduleText], { type: 'application/javascript' });
+        const moduleUrl = URL.createObjectURL(blob);
+        
+        // Import the module
+        const module = await import(moduleUrl);
+        JSONParser = module.JSONParser;
+        
+        // paths: ['$[*]'] means "Give me every item inside the root array"
+        // keepStack: false keeps memory usage low
+        parser = new JSONParser({ paths: ['$[*]'], keepStack: false });
+        
+        parser.onValue = ({ value }) => {
+            // This fires exactly once per complete object in your array
+            processObject(value);
+        };
+        
+        parser.onError = (err) => {
+            console.error('[DB Worker] JSON Parse Error:', err);
+            postMessage({ 
+                type: 'error', 
+                data: { message: `JSON Parse Error: ${err.message}` }
+            });
+        };
+    } catch (error) {
+        console.error('[DB Worker] Failed to initialize parser:', error);
         postMessage({ 
             type: 'error', 
-            data: { message: `JSON Parse Error: ${err.message}` }
+            data: { message: `Failed to initialize parser: ${error.message}` }
         });
-    };
+    }
 }
 
 /**
@@ -47,16 +67,6 @@ async function initDatabase() {
         console.log('[DB Worker] Initializing SQL.js database...');
         postMessage({ type: 'log', data: { message: 'Loading SQL.js WASM...' } });
         
-        // Dynamically load SQL.js in a module worker context
-        if (!initSqlJs) {
-            // Load the SQL.js UMD bundle which works in workers
-            const sqlJsScript = await fetch('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
-            const sqlJsCode = await sqlJsScript.text();
-            // Use eval to execute the UMD module in the worker global scope
-            eval(sqlJsCode);
-            initSqlJs = self.initSqlJs;
-        }
-        
         const SQL = await initSqlJs({
             locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${file}`
         });
@@ -64,7 +74,9 @@ async function initDatabase() {
         console.log('[DB Worker] SQL.js WASM loaded successfully');
         
         db = new SQL.Database();
-        initParser();
+        
+        console.log('[DB Worker] Initializing JSON parser...');
+        await initParser();
         
         console.log('[DB Worker] Database and parser created successfully');
         postMessage({ type: 'log', data: { message: 'Database & Parser initialized' } });
