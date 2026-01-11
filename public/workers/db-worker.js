@@ -15,6 +15,9 @@ let currentBatch = [];
 let existingColumnsSet = new Set();
 let pendingColumns = [];
 let parser = null;
+let parserWriter = null;
+let parserReader = null;
+let parserReadPromise = null;
 let JSONParser = null;
 
 /**
@@ -24,6 +27,10 @@ let JSONParser = null;
  * 1. The @streamparser/json-whatwg library is ESM-only
  * 2. Classic workers (needed for importScripts) don't support ES modules natively
  * 3. The library is loaded from esm.sh CDN which properly handles ESM module resolution
+ * 
+ * The @streamparser/json-whatwg library uses WHATWG Streams API:
+ * - parser.writable is a WritableStream
+ * - We need to get a writer from it to write chunks
  * 
  * For production deployments with strict security requirements, consider:
  * - Hosting the library locally
@@ -41,18 +48,34 @@ async function initParser() {
         // keepStack: false keeps memory usage low
         parser = new JSONParser({ paths: ['$[*]'], keepStack: false });
         
-        parser.onValue = ({ value }) => {
-            // This fires exactly once per complete object in your array
-            processObject(value);
-        };
+        // Get a writer from the parser's writable stream
+        parserWriter = parser.writable.getWriter();
         
-        parser.onError = (err) => {
-            console.error('[DB Worker] JSON Parse Error:', err);
-            postMessage({ 
-                type: 'error', 
-                data: { message: `JSON Parse Error: ${err.message}` }
-            });
-        };
+        // Set up the readable stream to consume parsed values
+        parserReader = parser.readable.getReader();
+        
+        // Read parsed values in the background
+        // Store the promise so we can wait for it to complete
+        parserReadPromise = (async () => {
+            try {
+                while (true) {
+                    const { done, value } = await parserReader.read();
+                    if (done) break;
+                    
+                    // Process each parsed object
+                    if (value) {
+                        processObject(value);
+                    }
+                }
+            } catch (err) {
+                console.error('[DB Worker] JSON Parse Error:', err);
+                postMessage({ 
+                    type: 'error', 
+                    data: { message: `JSON Parse Error: ${err.message}` }
+                });
+            }
+        })();
+        
     } catch (error) {
         console.error('[DB Worker] Failed to initialize parser:', error);
         postMessage({ 
@@ -114,11 +137,11 @@ self.onmessage = async function(event) {
             break;
 
         case 'chunk':
-            // THIS IS THE FIX: We just feed the raw string to the library.
-            // It handles the partial brackets, nested objects, and arrays automatically.
-            if (parser) {
+            // Write the chunk to the parser using the WHATWG Streams API
+            // The parser's writable stream will handle partial JSON and buffer management
+            if (parserWriter) {
                 try {
-                    parser.write(data);
+                    await parserWriter.write(data);
                 } catch (e) {
                     console.error('[DB Worker] Parser Write Error:', e);
                     postMessage({ 
@@ -132,9 +155,21 @@ self.onmessage = async function(event) {
             break;
 
         case 'end':
-            if (parser) {
-                console.log('[DB Worker] End of stream received, finalizing...');
-                await finalizeProcessing();
+            if (parserWriter) {
+                console.log('[DB Worker] End of stream received, closing parser...');
+                try {
+                    await parserWriter.close();
+                    console.log('[DB Worker] Parser closed, waiting for all values to be processed...');
+                    // Wait for the reader to finish processing all parsed values
+                    if (parserReadPromise) {
+                        await parserReadPromise;
+                    }
+                    console.log('[DB Worker] All values processed, finalizing...');
+                    await finalizeProcessing();
+                } catch (e) {
+                    console.error('[DB Worker] Error closing parser:', e);
+                    await finalizeProcessing();
+                }
             }
             break;
 
