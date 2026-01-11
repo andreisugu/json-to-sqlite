@@ -234,7 +234,9 @@ export default function Home() {
       const fileSize = file.size;
       let charsRead = 0;
       
-      // Estimated chunk size from the browser's default read buffer (typically 64KB)
+      // Browser's typical read buffer size is 64KB (65536 bytes)
+      // This is used for rough progress estimation only
+      // Note: Actual chunk count may vary due to UTF-8 encoding and browser buffering
       const ESTIMATED_CHUNK_SIZE = 65536;
       
       while (true) {
@@ -258,7 +260,10 @@ export default function Home() {
           console.log(`[Main] Streamed ${chunkCount} chunks (${charsRead} chars)`);
         }
         
-        await new Promise(resolve => setTimeout(resolve, 0));
+        // Yield to event loop every 10 chunks to maintain UI responsiveness
+        if (chunkCount % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
       }
       
       console.log(`[Main] File streaming complete. Total chunks: ${chunkCount}`);
