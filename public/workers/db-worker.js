@@ -185,7 +185,7 @@ function flattenObject(obj, prefix = '') {
     const flattened = {};
     
     for (const key in obj) {
-        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+        if (!Object.hasOwn(obj, key)) continue;
         
         const value = obj[key];
         const newKey = prefix ? `${prefix}_${key}` : key;
@@ -214,7 +214,7 @@ const schemaBuilder = {
     
     add(obj) {
         for (const key in obj) {
-            if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+            if (!Object.hasOwn(obj, key)) continue;
             
             const value = obj[key];
             const type = detectType(value);
@@ -262,6 +262,14 @@ function detectType(value) {
 }
 
 /**
+ * Validate and sanitize SQL type to prevent injection
+ */
+function validateSQLType(type) {
+    const allowedTypes = ['TEXT', 'INTEGER', 'REAL'];
+    return allowedTypes.includes(type) ? type : 'TEXT';
+}
+
+/**
  * Create table with detected schema
  */
 function createTable() {
@@ -277,7 +285,7 @@ function createTable() {
     
     // Build CREATE TABLE statement
     const columns = schema.map(col => {
-        return `"${sanitizeColumnName(col.name)}" ${col.type}`;
+        return `"${sanitizeColumnName(col.name)}" ${validateSQLType(col.type)}`;
     }).join(', ');
     
     const createTableSQL = `CREATE TABLE "${tableName}" (${columns})`;
@@ -323,7 +331,7 @@ function checkAndAddNewColumns(obj) {
     if (!schema || !db) return;
     
     for (const key in obj) {
-        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+        if (!Object.hasOwn(obj, key)) continue;
         
         if (!existingColumnsSet.has(key)) {
             const value = obj[key];
@@ -346,7 +354,7 @@ function applyPendingColumns() {
         db.run('BEGIN TRANSACTION');
         
         for (const col of pendingColumns) {
-            const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${col.type}`;
+            const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${validateSQLType(col.type)}`;
             db.run(alterSQL);
             schema.push(col);
             
