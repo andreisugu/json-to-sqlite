@@ -27,6 +27,7 @@ export default function Home() {
   const [rowsProcessed, setRowsProcessed] = useState(0);
   const [elapsedTime, setElapsedTime] = useState('0s');
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   
   const workerRef = useRef<Worker | null>(null);
   const startTimeRef = useRef<number | null>(null);
@@ -77,6 +78,40 @@ export default function Home() {
     if (file) {
       setSelectedFile(file);
       setShowOptions(true);
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type === 'application/json' || file.name.endsWith('.json')) {
+        setSelectedFile(file);
+        setShowOptions(true);
+      } else {
+        alert('Please drop a JSON file');
+      }
     }
   };
 
@@ -135,7 +170,7 @@ export default function Home() {
 
     try {
       addLog('Initializing database worker...');
-      const basePath = process.env.NODE_ENV === 'production' ? '/json-to-sqlite' : '';
+      const basePath = '/json-to-sqlite';
       workerRef.current = new Worker(`${basePath}/workers/db-worker.js`);
       workerRef.current.onmessage = handleWorkerMessage;
       workerRef.current.onerror = (error) => {
@@ -261,13 +296,26 @@ export default function Home() {
                 className="hidden"
                 id="fileInput"
               />
-              <label
-                htmlFor="fileInput"
-                className="inline-flex items-center gap-3 px-10 py-5 bg-blue-500 text-white rounded-lg cursor-pointer text-lg font-semibold hover:bg-blue-600 transition-all transform hover:-translate-y-0.5 shadow-lg"
+              <div
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-xl p-8 transition-all ${
+                  isDragging
+                    ? 'border-blue-500 bg-blue-50 scale-105'
+                    : 'border-gray-300 bg-gray-50'
+                }`}
               >
-                <Upload className="w-6 h-6" />
-                Choose JSON File
-              </label>
+                <label
+                  htmlFor="fileInput"
+                  className="inline-flex items-center gap-3 px-10 py-5 bg-blue-500 text-white rounded-lg cursor-pointer text-lg font-semibold hover:bg-blue-600 transition-all transform hover:-translate-y-0.5 shadow-lg"
+                >
+                  <Upload className="w-6 h-6" />
+                  Choose JSON File
+                </label>
+                <p className="mt-4 text-gray-600">or drag and drop a JSON file here</p>
+              </div>
               
               {selectedFile && (
                 <div className="mt-5 p-4 bg-gray-50 rounded-lg border border-gray-200">

@@ -156,7 +156,7 @@ function processObject(obj) {
     }
     
     // Create table once schema is determined
-    if (!schema && objectCount === sampleSize) {
+    if (!schema && objectCount >= sampleSize) {
         createTable();
     }
     
