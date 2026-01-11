@@ -185,7 +185,7 @@ function flattenObject(obj, prefix = '') {
     const flattened = {};
     
     for (const key in obj) {
-        if (!Object.hasOwn(obj, key)) continue;
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
         
         const value = obj[key];
         const newKey = prefix ? `${prefix}_${key}` : key;
@@ -214,7 +214,7 @@ const schemaBuilder = {
     
     add(obj) {
         for (const key in obj) {
-            if (!Object.hasOwn(obj, key)) continue;
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
             
             const value = obj[key];
             const type = detectType(value);
@@ -331,7 +331,7 @@ function checkAndAddNewColumns(obj) {
     if (!schema || !db) return;
     
     for (const key in obj) {
-        if (!Object.hasOwn(obj, key)) continue;
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
         
         if (!existingColumnsSet.has(key)) {
             const value = obj[key];
@@ -351,7 +351,7 @@ function applyPendingColumns() {
     
     try {
         // Use transaction for atomicity
-        db.run('BEGIN TRANSACTION');
+        db.run('BEGIN');
         
         for (const col of pendingColumns) {
             const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${validateSQLType(col.type)}`;
@@ -385,7 +385,7 @@ function insertBatch() {
     if (currentBatch.length === 0) return;
     
     try {
-        db.run('BEGIN TRANSACTION');
+        db.run('BEGIN');
         
         const columnNames = schema.map(col => `"${sanitizeColumnName(col.name)}"`).join(', ');
         const placeholders = schema.map(() => '?').join(', ');
