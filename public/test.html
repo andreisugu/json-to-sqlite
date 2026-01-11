@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Worker Test</title>
+</head>
+<body>
+    <h1>Testing Worker with Nested JSON</h1>
+    <div id="logs"></div>
+    <script type="module">
+        const logs = document.getElementById('logs');
+        
+        function log(msg) {
+            console.log(msg);
+            logs.innerHTML += `<div>${msg}</div>`;
+        }
+        
+        const testData = JSON.stringify([
+            {
+                "id": 1,
+                "name": "Test",
+                "configs": {
+                    "id": 101,
+                    "extraData": {
+                        "dxwrapper": "enabled",
+                        "nested": {
+                            "deepValue": "test with {curly} braces"
+                        }
+                    }
+                },
+                "tags": ["tag1", "tag2"]
+            }
+        ]);
+        
+        log('Creating worker...');
+        const worker = new Worker('/json-to-sqlite/workers/db-worker.js', { type: 'module' });
+        
+        worker.onmessage = (event) => {
+            const { type, data } = event.data;
+            log(`Worker message: ${type} - ${JSON.stringify(data)}`);
+            
+            if (type === 'complete') {
+                log('✓ Test passed! Worker processed nested JSON successfully');
+            }
+        };
+        
+        worker.onerror = (error) => {
+            log(`❌ Worker error: ${error.message}`);
+        };
+        
+        log('Initializing worker...');
+        worker.postMessage({
+            type: 'init',
+            data: { tableName: 'test', sampleSize: 10, batchSize: 100 }
+        });
+        
+        setTimeout(() => {
+            log('Sending test data...');
+            worker.postMessage({ type: 'chunk', data: testData });
+            
+            setTimeout(() => {
+                log('Finalizing...');
+                worker.postMessage({ type: 'end' });
+            }, 1000);
+        }, 2000);
+    </script>
+</body>
+</html>
