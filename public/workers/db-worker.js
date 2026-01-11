@@ -22,6 +22,8 @@ let bracketDepth = 0;
 let inString = false;
 let escapeNext = false;
 let currentObject = '';
+let existingColumnsSet = new Set();
+let pendingColumns = [];
 
 /**
  * Initialize SQL.js and database
@@ -162,13 +164,15 @@ function processObject(obj) {
     
     // Add to batch
     if (schema) {
-        // Check for new columns and add them dynamically
+        // Check for new columns (adds to pending list)
         checkAndAddNewColumns(flatObj);
         
         currentBatch.push(flatObj);
         
         // Insert batch when full
         if (currentBatch.length >= batchSize) {
+            // Apply any pending column additions before inserting
+            applyPendingColumns();
             insertBatch();
         }
     }
@@ -281,6 +285,9 @@ function createTable() {
     try {
         db.run(createTableSQL);
         
+        // Initialize the existing columns set
+        existingColumnsSet = new Set(schema.map(col => col.name));
+        
         postMessage({ 
             type: 'schema', 
             data: { 
@@ -310,46 +317,56 @@ function sanitizeColumnName(name) {
 }
 
 /**
- * Check if object has new columns not in schema, and add them
+ * Check if object has new columns not in schema, and add them to pending list
  */
 function checkAndAddNewColumns(obj) {
     if (!schema || !db) return;
     
-    const existingColumns = new Set(schema.map(col => col.name));
-    const newColumns = [];
-    
     for (const key in obj) {
         if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
         
-        if (!existingColumns.has(key)) {
+        if (!existingColumnsSet.has(key)) {
             const value = obj[key];
             const type = detectType(value);
-            newColumns.push({ name: key, type: type, nullable: true });
+            pendingColumns.push({ name: key, type: type, nullable: true });
+            // Add to set immediately to avoid duplicates in pending list
+            existingColumnsSet.add(key);
         }
     }
+}
+
+/**
+ * Apply pending column additions to the database
+ */
+function applyPendingColumns() {
+    if (pendingColumns.length === 0) return;
     
-    // Add new columns to the database and schema
-    if (newColumns.length > 0) {
-        try {
-            for (const col of newColumns) {
-                const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${col.type}`;
-                db.run(alterSQL);
-                schema.push(col);
-                
-                postMessage({ 
-                    type: 'log', 
-                    data: { 
-                        message: `Added new column: ${col.name} (${col.type})`,
-                        level: 'info'
-                    }
-                });
-            }
-        } catch (error) {
+    try {
+        // Use transaction for atomicity
+        db.run('BEGIN TRANSACTION');
+        
+        for (const col of pendingColumns) {
+            const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${sanitizeColumnName(col.name)}" ${col.type}`;
+            db.run(alterSQL);
+            schema.push(col);
+            
             postMessage({ 
-                type: 'error', 
-                data: { message: `Failed to add new columns: ${error.message}` }
+                type: 'log', 
+                data: { 
+                    message: `Added new column: ${col.name} (${col.type})`,
+                    level: 'info'
+                }
             });
         }
+        
+        db.run('COMMIT');
+        pendingColumns = [];
+    } catch (error) {
+        db.run('ROLLBACK');
+        postMessage({ 
+            type: 'error', 
+            data: { message: `Failed to add new columns: ${error.message}` }
+        });
     }
 }
 
@@ -421,6 +438,9 @@ async function finalizeProcessing() {
     if (!schema && objectCount > 0) {
         createTable();
     }
+    
+    // Apply any remaining pending columns
+    applyPendingColumns();
     
     // Insert any remaining rows
     if (currentBatch.length > 0) {
